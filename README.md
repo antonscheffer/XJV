@@ -5,7 +5,7 @@ I use it to parse configuration files or input parameters.
 declare
   ... <function xjv>
 begin
-  dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"\"\\\" 15\u00f8C \u20ac 20"}}', 'd.e' )  );
+  dbms_output.put_line( xjv( '{"a":"A","c":{},"d":{"e":"\"\\\" 15\u00f8C \u20ac 20"}}', 'd.e' )  );
   dbms_output.put_line( xjv( '{"a":{"b":[{},{},{"c":[0,1,2,3,4]}]}}', 'a.b[2].c[3]' )  );
 end;
 

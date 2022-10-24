@@ -1,8 +1,8 @@
 # XJV
 A small function to get data from a JSON string using JSON-path selectors.<br/>
 I use it to parse configuration files or input parameters.<br/>
-This functions assumes that you know the structure of the JSON string. You need to know that where to find the value you are looking for.<br/>
-And it only returns one value, no sets. So a wildcard like [*} to get all the values from a array won't work.
+This functions assumes that you know the structure of the JSON string. You need to know where to find the value you are looking for.<br/>
+And it only returns one value, no sets. So a wildcard like [*] to get all the values from a array won't work.
 ~~~
 declare
   ... <function xjv>

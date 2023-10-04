@@ -7,19 +7,19 @@ declare
     )
   return varchar2 character set p_json%charset
   is
-    c_double_quote  constant varchar2(1) character set p_json%charset := '"';
-    c_single_quote  constant varchar2(1) character set p_json%charset := '''';
-    c_back_slash    constant varchar2(1) character set p_json%charset := '\';
-    c_space         constant varchar2(1) character set p_json%charset := ' ';
-    c_colon         constant varchar2(1) character set p_json%charset := ':';
-    c_comma         constant varchar2(1) character set p_json%charset := ',';
-    c_end_brace     constant varchar2(1) character set p_json%charset := '}';
-    c_start_brace   constant varchar2(1) character set p_json%charset := '{';
-    c_end_bracket   constant varchar2(1) character set p_json%charset := ']';
-    c_start_bracket constant varchar2(1) character set p_json%charset := '[';
-    c_ht            constant varchar2(1) character set p_json%charset := chr(9);
-    c_lf            constant varchar2(1) character set p_json%charset := chr(10);
-    c_cr            constant varchar2(1) character set p_json%charset := chr(13);
+    c_double_quote  constant varchar2(1) character set p_json%charset := n'"';
+    c_single_quote  constant varchar2(1) character set p_json%charset := n'''';
+    c_back_slash    constant varchar2(1) character set p_json%charset := n'\';
+    c_space         constant varchar2(1) character set p_json%charset := n' ';
+    c_colon         constant varchar2(1) character set p_json%charset := n':';
+    c_comma         constant varchar2(1) character set p_json%charset := n',';
+    c_end_brace     constant varchar2(1) character set p_json%charset := n'}';
+    c_start_brace   constant varchar2(1) character set p_json%charset := n'{';
+    c_end_bracket   constant varchar2(1) character set p_json%charset := n']';
+    c_start_bracket constant varchar2(1) character set p_json%charset := n'[';
+    c_ht            constant varchar2(1) character set p_json%charset := unistr( '\0009' );
+    c_lf            constant varchar2(1) character set p_json%charset := unistr( '\000A' );
+    c_cr            constant varchar2(1) character set p_json%charset := unistr( '\000D' );
     c_ws            constant varchar2(4) character set p_json%charset := c_space || c_ht || c_cr || c_lf;
 --
     g_idx number;
@@ -36,6 +36,7 @@ declare
     l_tmp_name varchar2(32767);
     l_rv varchar2(32767) character set p_json%charset;
     l_chr varchar2(10) character set p_json%charset;
+    l_cnt pls_integer;
 --
     procedure skip_whitespace
     is
@@ -122,13 +123,14 @@ declare
             raise_application_error( -20005, 'No valid JSON, no end string found' );
           end if;
           g_idx := g_idx + 1;
-        when c_single_quote
+        when c_single_quote  -- lax parsing
         then
-          g_idx := instr( p_json, c_single_quote, g_idx ) + 1;
-          if g_idx = 1
+          g_idx := instr( p_json, c_single_quote, g_idx + 1 );
+          if g_idx = 0
           then
             raise_application_error( -20006, 'No valid JSON, no end string found' );
           end if;
+          g_idx := g_idx + 1;
         when c_start_brace
         then
           skip_object;
@@ -136,11 +138,10 @@ declare
         then
           skip_array;
         else -- should be a JSON-number, TRUE, FALSE or NULL, but we don't check for it
-          g_idx := least( coalesce( nullif( instr( p_json, c_space, g_idx ), 0 ), g_end + 1 )
-                        , coalesce( nullif( instr( p_json, c_comma, g_idx ), 0 ), g_end + 1 )
+             -- any whitespace after this value is also skipped
+          g_idx := least( coalesce( nullif( instr( p_json, c_comma, g_idx ), 0 ), g_end + 1 )
                         , coalesce( nullif( instr( p_json, c_end_brace, g_idx ), 0 ), g_end + 1 )
-                        , coalesce( nullif( instr( p_json, c_end_bracket, g_idx ), 0 ), g_end  + 1)
-                        , coalesce( nullif( instr( p_json, c_colon, g_idx ), 0 ), g_end + 1 )
+                        , coalesce( nullif( instr( p_json, c_end_bracket, g_idx ), 0 ), g_end  + 1 )
                         );
           if g_idx = g_end + 1
           then
@@ -153,7 +154,7 @@ declare
     then
       return null;
     end if;
-    l_path := ltrim( p_path, c_ws );
+    l_path := ltrim( p_path, c_ws || '$.' );
     if l_path is null
     then
       return null;
@@ -200,12 +201,13 @@ declare
       if substr( p_json, g_idx, 1 ) = c_start_brace and substr( l_name, 1, 1 ) != c_start_bracket
       then -- search for a name inside JSON object
            -- json unescape name?
+        l_cnt := 0;
         loop
           g_idx := g_idx + 1; -- skip start brace or comma
           skip_whitespace;
           if substr( p_json, g_idx, 1 ) = c_end_brace
           then
-            return null;
+            return case when l_name = 'length()' and l_path is null then l_cnt end;
           end if;
           l_start := g_idx;
           skip_value;  -- skip a name
@@ -228,12 +230,14 @@ declare
             l_rv_end := g_idx;
             exit;
           else
+            l_cnt := l_cnt + 1;
             skip_whitespace;
             if substr( p_json, g_idx, 1 ) = c_comma
             then
               null; -- OK, keep on searching for name
             else
-              return null; -- searched name not found
+              -- searched name not found
+              return case when l_name = 'length()' and l_path is null then l_cnt end;
             end if;
           end if;
         end loop;
@@ -269,6 +273,23 @@ declare
             end if;
           end if;
         end loop;
+      elsif substr( p_json, g_idx, 1 ) = c_start_bracket and l_name = 'length()' and l_path is null
+      then
+        l_cnt := 0;
+        loop
+          g_idx := g_idx + 1; -- skip start bracket or comma
+          skip_whitespace;
+          exit when substr( p_json, g_idx, 1 ) = c_end_bracket;
+          l_cnt := l_cnt + 1;
+          skip_value;
+          skip_whitespace;
+          exit when substr( p_json, g_idx, 1 ) = c_end_bracket;
+          if substr( p_json, g_idx, 1 ) != c_comma
+          then
+            raise_application_error( -20010, 'No valid JSON, expected a comma at position ' || g_idx );
+          end if;
+        end loop;
+        return l_cnt;
       else
         return null;
       end if;
@@ -333,6 +354,7 @@ begin
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"de"}}', 'b' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"de"}}', 'c' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"de"}}', 'd.e' ) );
+  dbms_output.put_line( xjv( q'~{'a' :'A','b': 'BB','c':{},'d':{'e':'de'}}~', 'd.e' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":[],"d":[{"e":"de"},true,null]}', 'c' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":[],"d":[{"e":"de"},true,null]}', 'd[0]' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":[],"d":[{"e":"de"},true,null]}', 'd[1]' ) );
@@ -340,4 +362,7 @@ begin
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"\"\\\""}}', 'd.e' ) );
   dbms_output.put_line( xjv( '{"a":"A","b":"BB","c":{},"d":{"e":"\"\\\" 15\u00f8C \u20ac 20"}}', 'd.e' )  );
   dbms_output.put_line( xjv( '{"a":{"b":[{},{},{"c":[0,1,2,3,4]}]}}', 'a.b[2].c[3]' )  );
+  dbms_output.put_line( xjv( '{"a":"A","b":["BB","bb","Bb"],"c":{},"d":{"e":"de"}}', '$b.length()' ) );
+  dbms_output.put_line( xjv( '{"a":"A","b":["BB","bb","Bb"],"c":{},"d":{"e":"de"}}', '$.length()' ) );
 end;
+/

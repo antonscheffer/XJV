@@ -1,7 +1,7 @@
 declare
   l_x clob;
-   l_json clob;
-  function json_minifier( p_json clob )
+  l_json clob;
+  function json_minifier( p_json clob character set any_cs )
   return clob character set p_json%charset
   is
     l_rv clob character set p_json%charset;
@@ -178,9 +178,8 @@ declare
     return l_rv;
   end;
 begin
-  l_json := q'~{ "\"\\\" 15\u00f8C \u20ac 20" : 12   ,   'x' : [  true,null  , false,{  }  , [ ] ] }~';
+  l_json := q'~{ "\"\\\" 15\u00f8C \u20ac 20" : 12   ,   'x' : [  true,null  , false,{  }  , [ ]   ,  "x123"  , "test" ] }~';
   l_x := json_minifier( l_json );
-  dbms_output.put_line( dbms_lob.getlength( l_x ) );
+  dbms_output.put_line( 'from ' || dbms_lob.getlength( l_json ) || ' to ' || dbms_lob.getlength( l_x ) );
   dbms_output.put_line( l_x );
 end;
-/
